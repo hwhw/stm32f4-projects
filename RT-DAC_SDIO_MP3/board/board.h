@@ -275,6 +275,11 @@
 #define VAL_GPIOE_AFRH              0
 
 
+/* this board has no VBus sense pad connected.
+ * also, the D+ line is externally pulled up
+ */
+#define BOARD_OTG_NOVBUSSENS 1
+
 #if !defined(_FROM_ASM_)
 #ifdef __cplusplus
 extern "C" {
