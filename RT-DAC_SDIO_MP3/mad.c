@@ -146,6 +146,9 @@ enum mad_flow header(void *data,
 
   //Codec_AudioInterface_Init(header->samplerate);
   //insert own shit here maybe
+  chprintf((BaseSequentialStream*)&SDU1, "MP3 Header Info :\n\r",NULL);
+  chprintf((BaseSequentialStream*)&SDU1, " Bitrate : %d\n\r",header->bitrate);
+  chprintf((BaseSequentialStream*)&SDU1, " Samplerate : %d\n\r",header->samplerate);
 
   buffer->samplerate=header->samplerate;
  }
@@ -218,7 +221,7 @@ enum mad_flow output(void *data,
   dbgprintf("output: %d channels, %d samples, left_ch=%x, right_ch=%x\r\n", nchannels, nsamples, left_ch, right_ch);
 
   if (playing==0){
-    dbgprintf("firing up DAC output...\r\n", NULL);
+    chprintf((BaseSequentialStream*)&SDU1, "starting DAC @%d hz\r\n", buffer->samplerate);
     chThdCreateStatic(waDACPlayer, sizeof(waDACPlayer), NORMALPRIO, DACPlayer, buffer->samplerate);
     playing=1;
     dbgprintf("DAC output running.\r\n", NULL);

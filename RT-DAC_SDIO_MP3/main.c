@@ -179,6 +179,9 @@ int main(void) {
   sdcObjectInit(&SDCD1);
   sdcStart(&SDCD1, NULL);
 
+  char* def_play[] = {"aaa.mp3"};
+  cmd_play((BaseSequentialStream*)&SDU1, 1, def_play);
+
 stop:
 	while(true) {
     if (!shelltp && (SDU1.config->usbp->state == USB_ACTIVE))

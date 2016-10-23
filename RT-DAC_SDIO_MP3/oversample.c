@@ -89,7 +89,6 @@ void oversample_run(oversample_ctx* ctx,
     int32_t *dat = ctx->fifo_data;
     int pos = ctx->fifo_pos;
     float gain = ctx->gain;
-    ptrdiff_t out_step2 = out_step * 2;
     float tmp[OVERSAMPLE_FACTOR];
     float last_err = ctx->last_err;
     float *t = ctx->t;
@@ -124,7 +123,9 @@ void oversample_run(oversample_ctx* ctx,
 
             // quantize...
             float wanted = tmp[i] - feedback;
+            //float wanted = tmp[i];
             float dither = ((rand() & 15) + 0.5f) * (1.f/16) - 0.5f;
+            //float dither = 0;
             int16_t q = quantize(wanted + dither);
             last_err = q - wanted;
             if (last_err < -2.f) last_err = -2.f; else
