@@ -34,9 +34,9 @@ struct buffer {
   int samplerate;
 };
 
-#define wave_buf_size 1152*2 //1152 double samples
+#define wave_buf_size 1152*2*OVERSAMPLE_FACTOR //1152 double samples
 
-uint16_t wave_buf[2*wave_buf_size*OVERSAMPLE_FACTOR]; //two banks for the dma
+uint16_t wave_buf[2*wave_buf_size]; //two banks for the dma
 uint16_t playing;
 
 #define MP3BUF 4096
@@ -238,7 +238,7 @@ enum mad_flow output(void *data,
     }
     */
     oversample_run(&over_ctx_l,nsamples,left_ch,1,write_buf,2);
-    oversample_run(&over_ctx_r,nsamples,right_ch,1,write_buf+1,2);
+    if(nchannels == 2) oversample_run(&over_ctx_r,nsamples,right_ch,1,write_buf+1,2);
     return MAD_FLOW_CONTINUE;
   } else if(event & (eventmask_t)4) {
     dbgprintf("stopping playback\r\n", NULL);
