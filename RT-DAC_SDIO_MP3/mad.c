@@ -1,10 +1,10 @@
 #include "mad.h"
+#include "oversample.h"
 
 //#define dbgprintf(a,...) chprintf((BaseSequentialStream*)&SDU1, a, __VA_ARGS__ )
 #define dbgprintf(a,...)
 
 thread_t *MadThd;
-
 
 void *mp3_malloc(int s) {
   void* p = chHeapAlloc(NULL, s);
@@ -36,7 +36,7 @@ struct buffer {
 
 #define wave_buf_size 1152*2 //1152 double samples
 
-uint16_t wave_buf[2*wave_buf_size]; //two banks for the dma
+uint16_t wave_buf[2*wave_buf_size*OVERSAMPLE_FACTOR]; //two banks for the dma
 uint16_t playing;
 
 #define MP3BUF 4096
@@ -49,12 +49,15 @@ struct mad_decoder decoder;
 
 /////////DAC SHIT BLOCK
 
-static void end_cb1(DACDriver *dacp, const dacsample_t *buffer, size_t n) {
+static void end_cb1(DACDriver *dacp, const dacsample_t *dacbuffer, size_t n) {
   (void)dacp;
   (void)n;
-  (void)buffer;
   chSysLockFromISR();
-  chEvtSignalI(MadThd, (eventmask_t)1);
+  if(dacbuffer == (dacsample_t*)wave_buf) {
+    chEvtSignalI(MadThd, (eventmask_t)1);
+  } else {
+    chEvtSignalI(MadThd, (eventmask_t)2);
+  }
   chSysUnlockFromISR();
 }
 
@@ -70,7 +73,7 @@ static void error_cb1(DACDriver *dacp, dacerror_t err) {
 
 static const DACConfig dac1cfg1 = {
 	  .init         = 2047U << 4,
-	  .datamode     = DAC_DHRM_12BIT_LEFT_DUAL
+	  .datamode     = DAC_DHRM_12BIT_RIGHT_DUAL
 };
 
 static const DACConversionGroup dacgrpcfg1 = {
@@ -96,7 +99,7 @@ static THD_FUNCTION(DACPlayer, arg) {
   gptStart(&GPTD6, &gpt6cfg1);
 
   dacStartConversion(&DACD1, &dacgrpcfg1, wave_buf, wave_buf_size);
-  gptStartContinuous(&GPTD6, 42000000U / ((int)arg));
+  gptStartContinuous(&GPTD6, 42000000U / (((int)arg)*2));
 }
 
 /////////
@@ -158,8 +161,6 @@ enum mad_flow header(void *data,
  * use this routine if high-quality output is desired.
  */
  
- //or maybe 12? ^^
-
 //insert sg magic here
 
 signed int scale(mad_fixed_t sample)
@@ -193,7 +194,8 @@ signed int scale(mad_fixed_t sample)
 
 #define OFFSET 0
 
-uint16_t *output_buf=wave_buf;
+oversample_ctx over_ctx_l;
+oversample_ctx over_ctx_r;
 
 enum mad_flow output(void *data,
 		     struct mad_header const *header,
@@ -215,36 +217,33 @@ enum mad_flow output(void *data,
 
   dbgprintf("output: %d channels, %d samples, left_ch=%x, right_ch=%x\r\n", nchannels, nsamples, left_ch, right_ch);
 
-  if (playing!=0) chEvtWaitAny((eventmask_t)1);
-  
-  //check this
-  //if (SPID3.dmatx->stream->CR & 0x80000) output=wave_buf0;
-  
-  if(output_buf==wave_buf){
-    output_buf=wave_buf+wave_buf_size;
-  }
-  else{
-    output_buf=wave_buf;
-  }
-  dbgprintf("writing interleaved samples to %x\r\n", output_buf);
-
-  write_buf=output_buf;
-
-  while (nsamples--) {
-    sample = scale(*left_ch++);
-    *write_buf++=sample;
-    if (nchannels == 2) sample = scale(*right_ch++);
-    *write_buf++=sample;
-  }
-
   if (playing==0){
     dbgprintf("firing up DAC output...\r\n", NULL);
     chThdCreateStatic(waDACPlayer, sizeof(waDACPlayer), NORMALPRIO, DACPlayer, buffer->samplerate);
+    playing=1;
     dbgprintf("DAC output running.\r\n", NULL);
   }
-  playing=1;
 
-  return MAD_FLOW_CONTINUE;
+  eventmask_t event = chEvtWaitAny((eventmask_t)(1|2|4));
+
+  if (event & (eventmask_t)(1|2)) {
+    write_buf=wave_buf+((event & (eventmask_t)2) ? wave_buf_size : 0);
+    dbgprintf("writing interleaved samples to %x\r\n", write_buf);
+    /*
+    while (nsamples--) {
+      sample = scale(*left_ch++);
+      *write_buf++=sample;
+      if (nchannels == 2) sample = scale(*right_ch++);
+      *write_buf++=sample;
+    }
+    */
+    oversample_run(&over_ctx_l,nsamples,left_ch,1,write_buf,2);
+    oversample_run(&over_ctx_r,nsamples,right_ch,1,write_buf+1,2);
+    return MAD_FLOW_CONTINUE;
+  } else if(event & (eventmask_t)4) {
+    dbgprintf("stopping playback\r\n", NULL);
+    return MAD_FLOW_STOP;
+  }
 }
 
 /*
@@ -285,6 +284,10 @@ static THD_FUNCTION(ThdMad, arg) //arg -> filename
   fs_ready=TRUE;
   int result;
   MadThd = chThdGetSelfX();
+
+  oversample_reset(&over_ctx_l, (float)(1.0/(1<<17)));
+  oversample_reset(&over_ctx_r, (float)(1.0/(1<<17)));
+
   FRESULT errFS = f_open(&fIn, (char*)arg, FA_READ);
   if(errFS != FR_OK) {
     dbgprintf( "Mp3Decode: Failed to open file \"%s\" for reading, err=%d\r\n", (char*)arg, errFS);

@@ -54,12 +54,13 @@ static void cmd_threads(BaseSequentialStream *chp, int argc, char *argv[]) {
     chprintf(chp, "Usage: threads\r\n");
     return;
   }
-  chprintf(chp, "    addr    stack prio refs     state\r\n");
+  chprintf(chp, "    addr    stack prio refs     ticks      state\r\n");
   tp = chRegFirstThread();
   do {
-    chprintf(chp, "%08lx %08lx %4lu %4lu %9s\r\n",
+    chprintf(chp, "%08lx %08lx %4lu %4lu %10lu %9s\r\n",
             (uint32_t)tp, (uint32_t)tp->p_ctx.r13,
             (uint32_t)tp->p_prio, (uint32_t)(tp->p_refs - 1),
+            (uint32_t)tp->p_time,
             states[tp->p_state]);
     tp = chRegNextThread(tp);
   } while (tp != NULL);
@@ -87,11 +88,18 @@ static void cmd_play(BaseSequentialStream *chp, int argc, char *argv[]) {
   chThdCreateStatic(waThdMad, sizeof(waThdMad), NORMALPRIO, ThdMad, argv[0]);
 }
 
+static void cmd_stop(BaseSequentialStream *chp, int argc, char *argv[]) {
+  (void)argc;
+  (void)argv;
+  chEvtSignal(MadThd, (eventmask_t)4);
+}
+
 static const ShellCommand commands[] = {
   {"mem", cmd_mem},
   {"threads", cmd_threads},
   {"sdcard", cmd_sdcard},
   {"play", cmd_play},
+  {"stop", cmd_stop},
   {NULL, NULL}
 };
 
@@ -150,10 +158,7 @@ int main(void) {
    * Note, a delay is inserted in order to not have to disconnect the cable
    * after a reset.
    */
-  usbDisconnectBus(serusbcfg.usbp);
-  chThdSleepMilliseconds(1500);
   usbStart(serusbcfg.usbp, &usbcfg);
-  usbConnectBus(serusbcfg.usbp);
 
   /*
    * Shell manager initialization.

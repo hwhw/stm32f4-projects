@@ -128,6 +128,7 @@ CSRC = $(STARTUPSRC) \
 			 $(MP3SRC) \
 			 exceptionhandler.c \
 			 usbcfg.c \
+			 oversample.c \
        main.c
 
 # C++ sources that can be compiled in ARM or THUMB mode depending on the global
